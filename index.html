@@ -19,12 +19,16 @@
         body { font-family: sans-serif; background: var(--bg-body); color: var(--text-main); margin: 0; padding: 20px; }
         .container { max-width: 500px; margin: auto; }
         .card { background: var(--bg-card); padding: 20px; border-radius: 15px; margin-bottom: 20px; border: 1px solid var(--border); }
-        .card-title { font-weight: bold; margin-bottom: 15px; font-size: 1.1rem; }
+        .card-title { font-weight: bold; margin-bottom: 15px; font-size: 1.1rem; text-transform: uppercase; color: var(--text-muted); }
         
+        label { display: block; font-size: 0.85rem; margin-bottom: 5px; color: var(--text-muted); }
         input, select, textarea { 
             width: 100%; padding: 12px; background: #1e252b; border: 1px solid var(--border); 
             color: white; border-radius: 8px; margin-bottom: 10px; box-sizing: border-box;
         }
+
+        .skill-toggle { display: flex; align-items: center; gap: 10px; margin-bottom: 15px; cursor: pointer; }
+        .skill-toggle input { width: 18px; height: 18px; margin: 0; }
 
         .btn-add, .btn-import, .btn-sortear, .btn-danger, .btn-secondary {
             width: 100%; padding: 12px; border: none; border-radius: 8px; font-weight: 600; cursor: pointer;
@@ -37,7 +41,7 @@
         .btn-danger { background: var(--danger); color: white; }
         .btn-secondary { background: #4a5568; color: white; }
 
-        .action-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .grid-inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
         .lista-container { max-height: 300px; overflow-y: auto; }
         .jogador-item {
             display: flex; justify-content: space-between; align-items: center;
@@ -57,28 +61,60 @@
 <body>
 
 <div class="container">
-    <header><h1>⚽ Montador Elite</h1></header>
+    <header><h1>⚽ Seleção de times </h1></header>
 
+    <!-- ADICIONAR JOGADORES -->
     <div class="card">
         <p class="card-title">Adicionar Jogadores</p>
-        <button class="btn-import" onclick="abrirModalImport()">📥 Importar Lista (Estrelas ⭐)</button>
+        <input type="text" id="nomeManual" placeholder="Nome do Jogador">
+        
+        <label class="skill-toggle">
+            <input type="checkbox" id="definirNivel" onchange="toggleNivelInput()">
+            Definir nível de habilidade?
+        </label>
+
+        <div id="nivelInputContainer" style="display: none;">
+            <label>Nível (1 a 6 estrelas)</label>
+            <select id="nivelManual">
+                <option value="1">⭐ (1)</option>
+                <option value="2">⭐⭐ (2)</option>
+                <option value="3" selected>⭐⭐⭐ (3)</option>
+                <option value="4">⭐⭐⭐⭐ (4)</option>
+                <option value="5">⭐⭐⭐⭐⭐ (5)</option>
+                <option value="6">⭐⭐⭐⭐⭐⭐ (6)</option>
+            </select>
+        </div>
+
+        <button class="btn-add" onclick="addJogadorManual()">Adicionar Manual</button>
+        <button class="btn-import" onclick="abrirModalImport()">📥 Importar Lista WhatsApp</button>
     </div>
 
+    <!-- CONFIGURAR SORTEIO -->
     <div class="card">
         <p class="card-title">Configurar Sorteio</p>
-        <label>Número de Times</label>
-        <input type="number" id="numTimes" value="2" min="2">
-        <div class="action-row">
+        <div class="grid-inputs">
+            <div>
+                <label>Qtd. Times</label>
+                <input type="number" id="numTimes" value="2" min="2">
+            </div>
+            <div>
+                <label>Jog. por Time</label>
+                <input type="number" id="jogPorTime" placeholder="Ex: 5">
+            </div>
+        </div>
+        <div class="grid-inputs">
             <button class="btn-sortear" onclick="sortear()">🎲 Sortear</button>
             <button class="btn-danger" onclick="limparJogadores()">🗑️ Limpar</button>
         </div>
     </div>
 
+    <!-- LISTA -->
     <div class="card">
         <p class="card-title">Jogadores (<span id="totalJogadores">0</span>)</p>
         <div id="listaJogadores" class="lista-container"></div>
     </div>
 
+    <!-- RESULTADO -->
     <div id="resultado" class="card" style="display:none;">
         <p class="card-title">Times Formados</p>
         <div id="times"></div>
@@ -90,9 +126,6 @@
 <div id="modalImport" class="modal">
     <div class="modal-content">
         <h3>Colar Lista</h3>
-        <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 10px;">
-            Cole a lista com as estrelas (ex: Lauro ⭐⭐⭐). O sistema vai equilibrar os times pelo nível.
-        </p>
         <textarea id="textoImportar" placeholder="Lauro ⭐⭐⭐&#10;Fabeo ⭐⭐⭐..." rows="10"></textarea>
         <button class="btn-add" onclick="processarImportacao()">Importar Jogadores</button>
         <button class="btn-secondary" onclick="fecharModalImport()">Cancelar</button>
@@ -112,9 +145,28 @@
 <script>
     let jogadores = JSON.parse(localStorage.getItem("jogadores")) || [];
 
-    function salvarJogadores() { localStorage.setItem("jogadores", JSON.stringify(jogadores)); }
+    function salvarJogadores() { 
+        localStorage.setItem("jogadores", JSON.stringify(jogadores)); 
+        renderJogadores();
+    }
 
-    function carregarJogadores() { renderJogadores(); }
+    function toggleNivelInput() {
+        const display = document.getElementById("definirNivel").checked ? "block" : "none";
+        document.getElementById("nivelInputContainer").style.display = display;
+    }
+
+    function addJogadorManual() {
+        const nome = document.getElementById("nomeManual").value.trim();
+        const nivel = document.getElementById("definirNivel").checked 
+            ? parseInt(document.getElementById("nivelManual").value) 
+            : 3; // Nível médio padrão
+
+        if (!nome) return alert("Digite o nome do jogador!");
+
+        jogadores.push({ nome, nivel });
+        document.getElementById("nomeManual").value = "";
+        salvarJogadores();
+    }
 
     function abrirModalImport() { document.getElementById("modalImport").style.display = "block"; }
     function fecharModalImport() { document.getElementById("modalImport").style.display = "none"; }
@@ -123,43 +175,23 @@
     function processarImportacao() {
         const texto = document.getElementById("textoImportar").value;
         if (!texto.trim()) return alert("Cole a lista!");
-
         const linhas = texto.split('\n');
-        let contagem = 0;
-
         linhas.forEach(linha => {
             if (!linha.trim()) return;
-
-            // Conta quantas estrelas tem na linha
             const estrelas = (linha.match(/⭐/g) || []).length;
-            
-            // Limpa o nome: remove números iniciais e as estrelas
-            let nomeLimpo = linha
-                .replace(/^\d+[\s.)-]+/, '') 
-                .replace(/⭐/g, '')
-                .trim();
-
+            let nomeLimpo = linha.replace(/^\d+[\s.)-]+/, '').replace(/⭐/g, '').trim();
             if (nomeLimpo) {
-                // Nível mínimo é 1, se não tiver estrela
-                jogadores.push({ 
-                    nome: nomeLimpo, 
-                    nivel: estrelas || 1 
-                });
-                contagem++;
+                jogadores.push({ nome: nomeLimpo, nivel: estrelas || 3 });
             }
         });
-
-        salvarJogadores();
-        renderJogadores();
         document.getElementById("textoImportar").value = "";
         fecharModalImport();
+        salvarJogadores();
     }
 
     function renderJogadores() {
         const lista = document.getElementById("listaJogadores");
-        const total = document.getElementById("totalJogadores");
         lista.innerHTML = "";
-        
         jogadores.forEach((j, i) => {
             lista.innerHTML += `
                 <div class="jogador-item">
@@ -171,42 +203,41 @@
                 </div>
             `;
         });
-        total.innerText = jogadores.length;
+        document.getElementById("totalJogadores").innerText = jogadores.length;
     }
 
     function remover(i) {
         jogadores.splice(i, 1);
         salvarJogadores();
-        renderJogadores();
     }
 
     function limparJogadores() {
         if(confirm("Limpar toda a lista?")) {
             jogadores = [];
             salvarJogadores();
-            renderJogadores();
+            document.getElementById("resultado").style.display = "none";
         }
     }
 
     function sortear() {
         if (jogadores.length < 2) return alert("Adicione mais jogadores!");
-        const numTimes = parseInt(document.getElementById("numTimes").value);
         
-        // 1. Embaralha para evitar vícios
-        let lista = [...jogadores].sort(() => Math.random() - 0.5);
+        let numTimes;
+        const jogPorTime = parseInt(document.getElementById("jogPorTime").value);
         
-        // 2. Ordena por nível (do maior para o menor)
-        lista.sort((a, b) => b.nivel - a.nivel);
+        // Lógica: se definiu jogadores por time, calcula qtd de times. Senão usa Qtd. Times.
+        if (jogPorTime > 0) {
+            numTimes = Math.max(1, Math.round(jogadores.length / jogPorTime));
+        } else {
+            numTimes = parseInt(document.getElementById("numTimes").value);
+        }
 
+        let lista = [...jogadores].sort(() => Math.random() - 0.5).sort((a, b) => b.nivel - a.nivel);
         let times = Array.from({ length: numTimes }, () => []);
         
-        // 3. Distribuição em Serpentina (Equilibra os níveis entre os grupos)
         lista.forEach((jogador, index) => {
             const volta = Math.floor(index / numTimes);
-            const proximoTime = (volta % 2 === 0) 
-                ? (index % numTimes) 
-                : (numTimes - 1 - (index % numTimes));
-            
+            const proximoTime = (volta % 2 === 0) ? (index % numTimes) : (numTimes - 1 - (index % numTimes));
             times[proximoTime].push(jogador);
         });
 
@@ -215,17 +246,16 @@
 
     function exibirTimes(times) {
         const div = document.getElementById("times");
-        const resCard = document.getElementById("resultado");
         div.innerHTML = "";
-        resCard.style.display = "block";
-
+        document.getElementById("resultado").style.display = "block";
         times.forEach((t, i) => {
-            const totalNivel = t.reduce((acc, j) => acc + j.nivel, 0);
+            if (t.length === 0) return;
+            const força = t.reduce((acc, j) => acc + j.nivel, 0);
             div.innerHTML += `
                 <div class="time-box">
-                    <h3 style="color: var(--primary)">Time ${i + 1}</h3>
+                    <h3 style="color: var(--primary)">Time ${i + 1} (${t.length} Jogadores)</h3>
                     ${t.map(j => `<p>• ${j.nome} <span class="stars">${"⭐".repeat(j.nivel)}</span></p>`).join("")}
-                    <small style="color: var(--text-muted)">Força Total: ${totalNivel}</small>
+                    <small style="color: var(--text-muted)">Força Total: ${força}</small>
                 </div>
             `;
         });
@@ -234,14 +264,11 @@
     function gerarTexto() {
         const timesBoxes = document.querySelectorAll(".time-box");
         let txt = "⚽ *TIMES SORTEADOS* ⚽\n\n";
-        
-        timesBoxes.forEach((box, i) => {
-            txt += `*TIME ${i + 1}*\n`;
-            const nomes = box.querySelectorAll("p");
-            nomes.forEach(n => txt += `${n.innerText}\n`);
+        timesBoxes.forEach((box) => {
+            txt += `*${box.querySelector('h3').innerText.split('(')[0].trim()}*\n`;
+            box.querySelectorAll("p").forEach(p => txt += `${p.innerText}\n`);
             txt += "\n";
         });
-
         document.getElementById("textoTimes").value = txt;
         document.getElementById("modalTexto").style.display = "block";
     }
@@ -250,10 +277,10 @@
         const textarea = document.getElementById("textoTimes");
         textarea.select();
         document.execCommand("copy");
-        alert("Copiado para o WhatsApp!");
+        alert("Copiado!");
     }
 
-    window.onload = carregarJogadores;
+    window.onload = renderJogadores;
 </script>
 
 </body>
