@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sorteador de Times Equilibrado</title>
+    <style>
+        :root {
+            --bg-body: #13171a;
+            --bg-card: #2d3640;
+            --primary: #22c55e;
+            --danger: #ef4444;
+            --info: #3b82f6;
+            --text-main: #ffffff;
+            --text-muted: #a0aec0;
+            --border: #3f4a56;
+        }
+
+        body { font-family: sans-serif; background: var(--bg-body); color: var(--text-main); margin: 0; padding: 20px; }
+        .container { max-width: 500px; margin: auto; }
+        .card { background: var(--bg-card); padding: 20px; border-radius: 15px; margin-bottom: 20px; border: 1px solid var(--border); }
+        .card-title { font-weight: bold; margin-bottom: 15px; font-size: 1.1rem; }
+        
+        input, select, textarea { 
+            width: 100%; padding: 12px; background: #1e252b; border: 1px solid var(--border); 
+            color: white; border-radius: 8px; margin-bottom: 10px; box-sizing: border-box;
+        }
+
+        .btn-add, .btn-import, .btn-sortear, .btn-danger, .btn-secondary {
+            width: 100%; padding: 12px; border: none; border-radius: 8px; font-weight: 600; cursor: pointer;
+            display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 10px;
+        }
+
+        .btn-add { background: var(--primary); color: white; }
+        .btn-import { background: var(--info); color: white; }
+        .btn-sortear { background: var(--primary); color: white; }
+        .btn-danger { background: var(--danger); color: white; }
+        .btn-secondary { background: #4a5568; color: white; }
+
+        .action-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .lista-container { max-height: 300px; overflow-y: auto; }
+        .jogador-item {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 10px; border-bottom: 1px solid var(--border); background: #252d37;
+            margin-bottom: 5px; border-radius: 5px;
+        }
+
+        .btn-del { background: none; color: var(--danger); border: none; font-size: 1.2rem; cursor: pointer; }
+        .time-box { background: #1e252b; padding: 15px; border-radius: 10px; margin-bottom: 10px; border-left: 5px solid var(--primary); }
+        
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 100; }
+        .modal-content { background: var(--bg-card); margin: 10% auto; padding: 25px; width: 90%; max-width: 400px; border-radius: 15px; }
+        
+        .stars { color: #fbbf24; font-size: 0.9rem; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header><h1>⚽ Montador Elite</h1></header>
+
+    <div class="card">
+        <p class="card-title">Adicionar Jogadores</p>
+        <button class="btn-import" onclick="abrirModalImport()">📥 Importar Lista (Estrelas ⭐)</button>
+    </div>
+
+    <div class="card">
+        <p class="card-title">Configurar Sorteio</p>
+        <label>Número de Times</label>
+        <input type="number" id="numTimes" value="2" min="2">
+        <div class="action-row">
+            <button class="btn-sortear" onclick="sortear()">🎲 Sortear</button>
+            <button class="btn-danger" onclick="limparJogadores()">🗑️ Limpar</button>
+        </div>
+    </div>
+
+    <div class="card">
+        <p class="card-title">Jogadores (<span id="totalJogadores">0</span>)</p>
+        <div id="listaJogadores" class="lista-container"></div>
+    </div>
+
+    <div id="resultado" class="card" style="display:none;">
+        <p class="card-title">Times Formados</p>
+        <div id="times"></div>
+        <button class="btn-secondary" onclick="gerarTexto()">📋 Gerar Texto WhatsApp</button>
+    </div>
+</div>
+
+<!-- MODAL IMPORTAÇÃO -->
+<div id="modalImport" class="modal">
+    <div class="modal-content">
+        <h3>Colar Lista</h3>
+        <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 10px;">
+            Cole a lista com as estrelas (ex: Lauro ⭐⭐⭐). O sistema vai equilibrar os times pelo nível.
+        </p>
+        <textarea id="textoImportar" placeholder="Lauro ⭐⭐⭐&#10;Fabeo ⭐⭐⭐..." rows="10"></textarea>
+        <button class="btn-add" onclick="processarImportacao()">Importar Jogadores</button>
+        <button class="btn-secondary" onclick="fecharModalImport()">Cancelar</button>
+    </div>
+</div>
+
+<!-- MODAL COPIAR TEXTO -->
+<div id="modalTexto" class="modal">
+    <div class="modal-content">
+        <h3>Lista para Copiar</h3>
+        <textarea id="textoTimes" readonly style="height: 250px;"></textarea>
+        <button class="btn-add" onclick="copiarTexto()">Copiar</button>
+        <button class="btn-secondary" onclick="fecharModalTexto()">Fechar</button>
+    </div>
+</div>
+
+<script>
+    let jogadores = JSON.parse(localStorage.getItem("jogadores")) || [];
+
+    function salvarJogadores() { localStorage.setItem("jogadores", JSON.stringify(jogadores)); }
+
+    function carregarJogadores() { renderJogadores(); }
+
+    function abrirModalImport() { document.getElementById("modalImport").style.display = "block"; }
+    function fecharModalImport() { document.getElementById("modalImport").style.display = "none"; }
+    function fecharModalTexto() { document.getElementById("modalTexto").style.display = "none"; }
+
+    function processarImportacao() {
+        const texto = document.getElementById("textoImportar").value;
+        if (!texto.trim()) return alert("Cole a lista!");
+
+        const linhas = texto.split('\n');
+        let contagem = 0;
+
+        linhas.forEach(linha => {
+            if (!linha.trim()) return;
+
+            // Conta quantas estrelas tem na linha
+            const estrelas = (linha.match(/⭐/g) || []).length;
+            
+            // Limpa o nome: remove números iniciais e as estrelas
+            let nomeLimpo = linha
+                .replace(/^\d+[\s.)-]+/, '') 
+                .replace(/⭐/g, '')
+                .trim();
+
+            if (nomeLimpo) {
+                // Nível mínimo é 1, se não tiver estrela
+                jogadores.push({ 
+                    nome: nomeLimpo, 
+                    nivel: estrelas || 1 
+                });
+                contagem++;
+            }
+        });
+
+        salvarJogadores();
+        renderJogadores();
+        document.getElementById("textoImportar").value = "";
+        fecharModalImport();
+    }
+
+    function renderJogadores() {
+        const lista = document.getElementById("listaJogadores");
+        const total = document.getElementById("totalJogadores");
+        lista.innerHTML = "";
+        
+        jogadores.forEach((j, i) => {
+            lista.innerHTML += `
+                <div class="jogador-item">
+                    <div>
+                        <strong>${j.nome}</strong> 
+                        <span class="stars">${"⭐".repeat(j.nivel)}</span>
+                    </div>
+                    <button class="btn-del" onclick="remover(${i})">✕</button>
+                </div>
+            `;
+        });
+        total.innerText = jogadores.length;
+    }
+
+    function remover(i) {
+        jogadores.splice(i, 1);
+        salvarJogadores();
+        renderJogadores();
+    }
+
+    function limparJogadores() {
+        if(confirm("Limpar toda a lista?")) {
+            jogadores = [];
+            salvarJogadores();
+            renderJogadores();
+        }
+    }
+
+    function sortear() {
+        if (jogadores.length < 2) return alert("Adicione mais jogadores!");
+        const numTimes = parseInt(document.getElementById("numTimes").value);
+        
+        // 1. Embaralha para evitar vícios
+        let lista = [...jogadores].sort(() => Math.random() - 0.5);
+        
+        // 2. Ordena por nível (do maior para o menor)
+        lista.sort((a, b) => b.nivel - a.nivel);
+
+        let times = Array.from({ length: numTimes }, () => []);
+        
+        // 3. Distribuição em Serpentina (Equilibra os níveis entre os grupos)
+        lista.forEach((jogador, index) => {
+            const volta = Math.floor(index / numTimes);
+            const proximoTime = (volta % 2 === 0) 
+                ? (index % numTimes) 
+                : (numTimes - 1 - (index % numTimes));
+            
+            times[proximoTime].push(jogador);
+        });
+
+        exibirTimes(times);
+    }
+
+    function exibirTimes(times) {
+        const div = document.getElementById("times");
+        const resCard = document.getElementById("resultado");
+        div.innerHTML = "";
+        resCard.style.display = "block";
+
+        times.forEach((t, i) => {
+            const totalNivel = t.reduce((acc, j) => acc + j.nivel, 0);
+            div.innerHTML += `
+                <div class="time-box">
+                    <h3 style="color: var(--primary)">Time ${i + 1}</h3>
+                    ${t.map(j => `<p>• ${j.nome} <span class="stars">${"⭐".repeat(j.nivel)}</span></p>`).join("")}
+                    <small style="color: var(--text-muted)">Força Total: ${totalNivel}</small>
+                </div>
+            `;
+        });
+    }
+
+    function gerarTexto() {
+        const timesBoxes = document.querySelectorAll(".time-box");
+        let txt = "⚽ *TIMES SORTEADOS* ⚽\n\n";
+        
+        timesBoxes.forEach((box, i) => {
+            txt += `*TIME ${i + 1}*\n`;
+            const nomes = box.querySelectorAll("p");
+            nomes.forEach(n => txt += `${n.innerText}\n`);
+            txt += "\n";
+        });
+
+        document.getElementById("textoTimes").value = txt;
+        document.getElementById("modalTexto").style.display = "block";
+    }
+
+    function copiarTexto() {
+        const textarea = document.getElementById("textoTimes");
+        textarea.select();
+        document.execCommand("copy");
+        alert("Copiado para o WhatsApp!");
+    }
+
+    window.onload = carregarJogadores;
+</script>
+
+</body>
+</html>
